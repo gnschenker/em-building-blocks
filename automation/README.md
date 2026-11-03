@@ -1,6 +1,6 @@
 # Automation slices: premium collection in life and health insurance
 
-A follow-up to "The work nobody clicks". Same style as "One slice, end to end" and "Read models are cheap. Coupling isn't.": plain JavaScript (ESM) on Node 20, [es-dcb-library](https://www.npmjs.com/package/es-dcb-library) 1.0.1 and PostgreSQL 14+.
+A follow-up to ["The work nobody clicks"](https://www.linkedin.com/pulse/work-nobody-clicks-gabriel-n-schenker-yhzge/). Same style as ["One slice, end to end"](https://www.linkedin.com/pulse/one-slice-end-gabriel-n-schenker-gomle/) and ["Read models are cheap. Coupling isn't."](https://www.linkedin.com/pulse/read-models-cheap-coupling-isnt-gabriel-n-schenker-7geqe/): plain JavaScript (ESM) on Node 20, [es-dcb-library](https://www.npmjs.com/package/es-dcb-library) 1.0.1 and PostgreSQL 14+.
 
 Every automation here has the same shape: a todo list (a projection), a processor that reads the open rows and sends one command per row, and a command handler that decides from past events. The event the command records takes the row off the list.
 
