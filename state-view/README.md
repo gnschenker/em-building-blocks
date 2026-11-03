@@ -1,46 +1,98 @@
-# State view slices: one read model per use case
+# State View Slice: Multiple Read Models
 
-A follow-up to "One slice, end to end". Same policy domain, same events, plain JavaScript (ESM) on Node 20 and in the browser, on [es-dcb-library](https://www.npmjs.com/package/es-dcb-library) 1.0.1 (npm) and PostgreSQL 14+.
+This example demonstrates **State View** slices in Event Modeling, showing how to build multiple read models from the same events without coupling them together.
 
-Two use cases read the same two events, PolicyIssued and PolicyCancelledInCoolingOff:
+## What This Slice Does
 
-- **Policy details**: the cancel screen needs one policy, its deadline, and whether to show the button.
-- **Cooling-off cancellations**: the ops team needs a list of cancellations, with how far into the window each one came.
+Implements two independent read models consuming the same policy events (PolicyIssued and PolicyCancelledInCoolingOff):
 
-## Model to code
+1. **Policy Details**: Powers the cancel screen, showing one policy with its deadline and whether cancellation is allowed
+2. **Cooling-Off Cancellations**: Provides ops teams with a list of all cancellations and how far into the cooling-off window each occurred
 
-| Model element | File | Code |
+## Key Principle: Read Models Are Cheap, Coupling Isn't
+
+Each read model has its own:
+- Database table with a custom shape
+- Projection code
+- Checkpoint for event tracking
+- No shared code or imports between read models
+
+This independence means changes to one use case never affect another. If ops needs a new column or the cancel screen needs a new field, only one folder and one projection needs to change.
+
+## Implementation Details
+
+Built with plain JavaScript (ESM) on Node 20 and browser-compatible, using:
+- [es-dcb-library](https://www.npmjs.com/package/es-dcb-library) 1.0.1 (npm)
+- PostgreSQL 14+
+
+### Model to Code Mapping
+
+| Model Element | File | Implementation |
 |---|---|---|
-| State view: Policy details (projection) | `PolicyDetails/PolicyDetails.js` | `policyDetailsProjection`: handles PolicyIssued and PolicyCancelledInCoolingOff |
-| Read model: Policy details | same file | table `policy_details` (one row per policy), checkpoint row `policy-details` |
-| Query: Policy details | same file | `getPolicyDetails(pool, policyId)` |
-| Endpoint the cancel screen calls | `server.js` | `GET /policies/{policyId}/details` (404 `PolicyNotFound`) |
-| Screen: Cancel policy | `CancelPolicyInCoolingOff/CancelPolicyScreen.html` | reads Policy details, hides the button when `cancelled` |
-| Scenarios: Policy details | `PolicyDetails/PolicyDetails.test.js` | Issued only, Issued then cancelled, Events of other policies are ignored, Unknown policy, Replay is idempotent |
-| State view: Cooling-off cancellations (projection) | `CoolingOffCancellations/CoolingOffCancellations.js` | `coolingOffCancellationsProjection(store)`: handles PolicyCancelledInCoolingOff, looks up the policy's PolicyIssued |
-| Read model: Cooling-off cancellations | same file | table `cooling_off_cancellations` (one row per cancellation), checkpoint row `cooling-off-cancellations` |
-| Query: Cooling-off cancellations | same file | `listCoolingOffCancellations(pool)`; served at `GET /ops/cooling-off-cancellations` |
-| Scenarios: Cooling-off cancellations | `CoolingOffCancellations/CoolingOffCancellations.test.js` | Issued only, Issued then cancelled, Last moment still counts, Events of other policies are ignored, Replay is idempotent |
-| State change: CancelPolicyInCoolingOff | `CancelPolicyInCoolingOff/` | unchanged from "One slice, end to end" except the screen |
+| State view: Policy details (projection) | `PolicyDetails/PolicyDetails.js` | `policyDetailsProjection` handles events |
+| Read model: Policy details | Same file | Table `policy_details`, checkpoint `policy-details` |
+| Query: Policy details | Same file | `getPolicyDetails(pool, policyId)` |
+| Screen: Cancel policy | `CancelPolicyInCoolingOff/CancelPolicyScreen.html` | Reads policy details, conditionally shows button |
+| State view: Cooling-off cancellations | `CoolingOffCancellations/CoolingOffCancellations.js` | `coolingOffCancellationsProjection` |
+| Read model: Cooling-off cancellations | Same file | Table `cooling_off_cancellations`, checkpoint `cooling-off-cancellations` |
+| Query: Cancellations list | Same file | `listCoolingOffCancellations(pool)` |
+| State change: CancelPolicyInCoolingOff | `CancelPolicyInCoolingOff/` | Same as in ["One slice, end to end"](https://www.linkedin.com/pulse/one-slice-end-gabriel-n-schenker-gomle/) |
 
-Glue outside the slices: `store.js` (connects the event store) and `server.js` (runs both projections with the library's `ProjectionManager`, plus the HTTP routes).
+### How Projections Stay Correct
 
-## Why the two read models share nothing
+The library's `ProjectionManager` runs each projection:
+- Catches up from the projection's checkpoint over committed events in order
+- Follows new events through PostgreSQL LISTEN/NOTIFY
+- Handles each event in a transaction that also updates the checkpoint
+- Ensures at-least-once delivery with idempotent writes
+- Prevents table/checkpoint inconsistency during crashes
 
-The cancel screen and the ops list ask different questions, so each gets its own table, its own shape, its own checkpoint, and its own code. Policy details keeps one row for every policy, including the ones nobody cancels. The ops list keeps one row per cancellation and never sees a policy that stayed. Neither imports from the other, not even a helper. If ops wants a new column tomorrow, or the screen needs a new field, only one folder changes and only one projection is rebuilt from the events. Read models are cheap to make, so a change to one use case has no side effects on another.
+## Prerequisites
 
-## How a projection stays correct
+- Node.js 20+
+- PostgreSQL 14+
+- Running PostgreSQL instance accessible at `DATABASE_URL`
 
-The library runs each projection: it catches up from the projection's checkpoint over committed events only, in `(tx_id, global_position)` order, then follows new events through `LISTEN/NOTIFY`. Each event is handled in one transaction that also moves the checkpoint, so a crash never leaves the table and the checkpoint out of step. Delivery is at least once, so every write is idempotent (`ON CONFLICT DO NOTHING`, or an `UPDATE` that sets a fixed value). The "Replay is idempotent" scenarios reset the checkpoint and run every event again.
-
-## Run
+## Installation
 
 ```bash
+cd state-view
 npm install
-createdb state_view
-export DATABASE_URL=postgres://postgres@localhost:5432/state_view
-npm test     # all scenarios against a real Postgres, one file at a time
-npm start    # http://localhost:3000/?policyId=P1
 ```
 
-`npm test` passes `--test-force-exit`: es-dcb-library 1.0.1 leaves a 30-second setup-timeout timer running after `ProjectionManager.initialize()`, so without the flag each projection test file waits about 30 s before it exits.
+## Setup Database
+
+```bash
+createdb state_view
+export DATABASE_URL=postgres://postgres@localhost:5432/state_view
+```
+
+## Running the Tests
+
+```bash
+npm test
+```
+
+Tests include scenarios for:
+- Policy details: Issued only, Issued then cancelled, Events of other policies ignored, Unknown policy, Replay idempotence
+- Cooling-off cancellations: Issued only, Issued then cancelled, Last moment handling, Event isolation, Replay idempotence
+
+**Test Configuration Notes:**
+- `--test-concurrency=1`: All test files share one database, so they must run sequentially to avoid conflicts
+- `--test-force-exit`: es-dcb-library 1.0.1 leaves a 30-second setup timeout running after `ProjectionManager.initialize()`, so this flag prevents the test process from waiting
+
+## Running the Application
+
+```bash
+npm start
+```
+
+Then navigate to: `http://localhost:3000/?policyId=P1`
+
+Available endpoints:
+- `GET /policies/{policyId}/details` - Policy details (404 if PolicyNotFound)
+- `GET /ops/cooling-off-cancellations` - List of cancellations
+
+## Learn More
+
+Read the accompanying article: ["Read models are cheap. Coupling isn't."](https://www.linkedin.com/pulse/read-models-cheap-coupling-isnt-gabriel-n-schenker-7geqe/)
