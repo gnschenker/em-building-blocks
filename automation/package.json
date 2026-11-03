@@ -1,0 +1,13 @@
+{
+  "name": "automation-slices",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 --test-force-exit",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "es-dcb-library": "^1.0.1",
+    "pg": "^8.13.3"
+  }
+}
