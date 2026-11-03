@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cancel policy</title>
+<h1>Cancel policy</h1>
+<!-- These values come from the "Policy details" state view: GET /policies/{policyId}/details -->
+<p>Policy <b id="policyNumber"></b>, issued <span id="issuedAt"></span></p>
+<p>Cooling-off ends on <span id="coolingOffEndsAt"></span></p>
+<form id="cancel" hidden>
+  <label>Reason (optional) <input name="reason"></label>
+  <button style="background:#1e6fd9;color:#fff">Cancel my policy</button>
+</form>
+<p id="result"></p>
+<script type="module">
+  const policyId = new URLSearchParams(location.search).get('policyId');
+  const res = await fetch(`/policies/${encodeURIComponent(policyId)}/details`);
+  const policy = await res.json();
+  if (!res.ok) document.getElementById('result').textContent = policy.error;
+  for (const id of ['policyNumber', 'issuedAt', 'coolingOffEndsAt']) {
+    document.getElementById(id).textContent = policy[id] ?? '';
+  }
+  if (policy.cancelled) document.getElementById('result').textContent = 'This policy is cancelled.';
+  document.getElementById('cancel').hidden = !res.ok || policy.cancelled; // no button for a cancelled policy
+
+  document.getElementById('cancel').onsubmit = async (e) => {
+    e.preventDefault();
+    const res = await fetch('/commands/cancel-policy-in-cooling-off', {
+      method: 'POST',
+      body: JSON.stringify({
+        policyId,
+        reason: e.target.reason.value,
+        coolingOffEndsAt: policy.coolingOffEndsAt, // the deadline this screen showed
+      }),
+    });
+    const body = await res.json();
+    document.getElementById('result').textContent = res.ok ? `Cancellation requested at ${body.requestedAt}` : body.error;
+    if (res.ok) e.target.hidden = true;
+  };
+</script>
