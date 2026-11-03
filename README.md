@@ -4,7 +4,7 @@ This repository contains full runnable code examples for Event Modeling slice ty
 
 ## Structure
 
-Each slice type lives in its own feature branch and is merged into `main` as a separate, self-contained implementation. Each merge is tagged for easy reference.
+Each slice type lives in its own feature branch and is merged into `main` as a separate, self-contained implementation. Each merge will be tagged for easy reference (tags created at merge time).
 
 ## Available Slice Types
 
