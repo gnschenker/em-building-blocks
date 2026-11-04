@@ -112,8 +112,7 @@ export const workerProjection = defineProjection({
         insured_national_id TEXT NOT NULL,
         date_of_death       TEXT,
         registered_at       TEXT NOT NULL,
-        claim_type          TEXT NOT NULL,
-        done                BOOLEAN NOT NULL DEFAULT false
+        claim_type          TEXT NOT NULL
       )`);
   },
   handler: createEventDispatcher({
@@ -128,11 +127,11 @@ export const workerProjection = defineProjection({
   }),
 });
 const close = (c, id) =>
-  c.query('UPDATE death_claims_to_open SET done = true WHERE source_event_id = $1', [id]);
+  c.query('DELETE FROM death_claims_to_open WHERE source_event_id = $1', [id]);
 
 export async function listToApply(pool) {
   const { rows } = await pool.query(
-    'SELECT * FROM death_claims_to_open WHERE NOT done ORDER BY source_event_id');
+    'SELECT * FROM death_claims_to_open ORDER BY source_event_id');
   return rows.map((r) => ({
     insuredNationalId: r.insured_national_id,
     dateOfDeath: r.date_of_death,

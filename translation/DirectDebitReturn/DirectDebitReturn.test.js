@@ -119,7 +119,7 @@ test('Given a collection in flight, when RecordCollectionAttemptFailed, then Pre
   await processWork({ pool, store });
   await thenEvents(['PremiumCollectionAttemptFailed'], 'collection:collection-P1-2026-11', [recorded]);
   await project();
-  assert.deepEqual(await listToApply(pool), []);
+  assert.deepEqual((await pool.query('SELECT * FROM collection_returns_to_record')).rows, []);
 });
 
 test('Given no matching collection, RecordCollectionAttemptFailed records CollectionReturnRejected and the worker todo closes', async () => {
@@ -128,7 +128,7 @@ test('Given no matching collection, RecordCollectionAttemptFailed records Collec
   await processWork({ pool, store });
   await thenEvents(['CollectionReturnRejected'], 'collection:collection-P1-2026-11', [rejected('CollectionNotFound')]);
   await project();
-  assert.deepEqual(await listToApply(pool), []);
+  assert.deepEqual((await pool.query('SELECT * FROM collection_returns_to_record')).rows, []);
 });
 
 test('Given a closed collection, RecordCollectionAttemptFailed records CollectionReturnRejected and the worker todo closes', async () => {
@@ -137,5 +137,5 @@ test('Given a closed collection, RecordCollectionAttemptFailed records Collectio
   await processWork({ pool, store });
   await thenEvents(['CollectionReturnRejected'], 'collection:collection-P1-2026-11', [rejected('AttemptNotInFlight')]);
   await project();
-  assert.deepEqual(await listToApply(pool), []);
+  assert.deepEqual((await pool.query('SELECT * FROM collection_returns_to_record')).rows, []);
 });

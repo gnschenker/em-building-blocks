@@ -35,7 +35,7 @@ The translation todo list is fed by the external event and is never closed: no b
 | Mapping | `translate(payload)` | Pure. Returns the internal data, or `null` to skip |
 | Translation command | `recordTranslation(store, payload)` | Mapping plus source-id dedupe. Records the internal event |
 | Translation processor | `processTranslations({ pool, store })` | Loop over the translation todo list |
-| Worker todo list | `listToApply(pool)` | Open rows only. Closed by the outcome |
+| Worker todo list | `listToApply(pool)` | An item leaves the list by being deleted |
 | Worker command | `issue(store, command)` | Where business rules apply, and the outcome is recorded |
 | Worker processor | `processWork({ pool, store })` | Loop over the worker todo list |
 

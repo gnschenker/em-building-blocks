@@ -123,7 +123,7 @@ test('Given an application in underwriting, when RecordUnderwritingEvidence, the
   await processWork({ pool, store });
   await thenEvents(['UnderwritingEvidenceRecorded'], 'application:A1', [recorded]);
   await project();
-  assert.deepEqual(await listToApply(pool), []);
+  assert.deepEqual((await pool.query('SELECT * FROM underwriting_evidence_to_record')).rows, []);
 });
 
 test('Given no matching application, RecordUnderwritingEvidence records UnderwritingEvidenceRejected and the worker todo closes', async () => {
@@ -132,7 +132,7 @@ test('Given no matching application, RecordUnderwritingEvidence records Underwri
   await processWork({ pool, store });
   await thenEvents(['UnderwritingEvidenceRejected'], 'application:A1', [rejected('ApplicationNotFound')]);
   await project();
-  assert.deepEqual(await listToApply(pool), []);
+  assert.deepEqual((await pool.query('SELECT * FROM underwriting_evidence_to_record')).rows, []);
 });
 
 test('Given a closed application, RecordUnderwritingEvidence records UnderwritingEvidenceRejected and the worker todo closes', async () => {
@@ -141,5 +141,5 @@ test('Given a closed application, RecordUnderwritingEvidence records Underwritin
   await processWork({ pool, store });
   await thenEvents(['UnderwritingEvidenceRejected'], 'application:A1', [rejected('ApplicationNotInUnderwriting')]);
   await project();
-  assert.deepEqual(await listToApply(pool), []);
+  assert.deepEqual((await pool.query('SELECT * FROM underwriting_evidence_to_record')).rows, []);
 });

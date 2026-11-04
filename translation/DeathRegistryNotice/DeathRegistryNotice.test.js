@@ -122,7 +122,7 @@ test('Given a policy in force, when OpenDeathClaim, then DeathClaimOpened and th
   await processWork({ pool, store });
   await thenEvents(['DeathClaimOpened'], 'person:N-1001', [recorded]);
   await project();
-  assert.deepEqual(await listToApply(pool), []);
+  assert.deepEqual((await pool.query('SELECT * FROM death_claims_to_open')).rows, []);
 });
 
 test('Given no matching policy, OpenDeathClaim records DeathClaimRejected and the worker todo closes', async () => {
@@ -131,7 +131,7 @@ test('Given no matching policy, OpenDeathClaim records DeathClaimRejected and th
   await processWork({ pool, store });
   await thenEvents(['DeathClaimRejected'], 'person:N-1001', [rejected('PolicyNotFound')]);
   await project();
-  assert.deepEqual(await listToApply(pool), []);
+  assert.deepEqual((await pool.query('SELECT * FROM death_claims_to_open')).rows, []);
 });
 
 test('Given a lapsed policy, OpenDeathClaim records DeathClaimRejected and the worker todo closes', async () => {
@@ -140,5 +140,5 @@ test('Given a lapsed policy, OpenDeathClaim records DeathClaimRejected and the w
   await processWork({ pool, store });
   await thenEvents(['DeathClaimRejected'], 'person:N-1001', [rejected('PolicyNotInForce', 'P1')]);
   await project();
-  assert.deepEqual(await listToApply(pool), []);
+  assert.deepEqual((await pool.query('SELECT * FROM death_claims_to_open')).rows, []);
 });

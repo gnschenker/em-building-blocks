@@ -112,8 +112,7 @@ export const workerProjection = defineProjection({
         source_event_id TEXT PRIMARY KEY,
         collection_id   TEXT NOT NULL,
         reason          TEXT NOT NULL,
-        returned_at     TEXT NOT NULL,
-        done            BOOLEAN NOT NULL DEFAULT false
+        returned_at     TEXT NOT NULL
       )`);
   },
   handler: createEventDispatcher({
@@ -128,11 +127,11 @@ export const workerProjection = defineProjection({
   }),
 });
 const close = (c, id) =>
-  c.query('UPDATE collection_returns_to_record SET done = true WHERE source_event_id = $1', [id]);
+  c.query('DELETE FROM collection_returns_to_record WHERE source_event_id = $1', [id]);
 
 export async function listToApply(pool) {
   const { rows } = await pool.query(
-    'SELECT * FROM collection_returns_to_record WHERE NOT done ORDER BY source_event_id');
+    'SELECT * FROM collection_returns_to_record ORDER BY source_event_id');
   return rows.map((r) => ({
     collectionId: r.collection_id,
     reason: r.reason,
