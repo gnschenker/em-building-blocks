@@ -1,16 +1,23 @@
 import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { queryItem } from 'es-dcb-library';
-import { store, pool } from '../store.js';
-import { external, translate, ingest, sourceTag } from './DirectDebitReturn.js';
+import { store, pool, given, runProjections, reset } from '../testkit.js';
+import {
+  external, translate, ingest, sourceTag,
+  translationProjection, workerProjection,
+  listToTranslate, listToApply,
+  processTranslations, processWork,
+} from './DirectDebitReturn.js';
 
-beforeEach(() => pool.query('TRUNCATE events'));
+const project = () => runProjections(translationProjection, workerProjection);
+beforeEach(() => reset(
+  [translationProjection, workerProjection],
+  ['debit_returns_to_translate', 'collection_returns_to_record'],
+));
 after(() => pool.end());
 
-const given = (...events) => store.append(events);
-const when = (payload) => ingest(store, payload);
-async function thenEvents(tag, expected) {
-  const { events } = await store.load(queryItem({ types: ['PremiumCollectionAttemptFailed'], tags: [tag] }));
+async function thenEvents(types, tag, expected) {
+  const { events } = await store.load(queryItem({ types, tags: [tag] }));
   assert.deepEqual(events.map(({ type, data, tags }) => ({ type, data, tags })), expected);
 }
 
@@ -28,17 +35,29 @@ const unknown = external({
   collectionRef: 'collection-P1-2026-11',
   returnedAt: '2026-11-01T08:12:00Z',
 });
-const command = {
+const mapped = {
   collectionId: 'collection-P1-2026-11',
-  reason: 'insufficient_funds',
+  returnReason: 'insufficient_funds',
   returnedAt: '2026-11-01T08:12:00Z',
   sourceEventId: 'DDR-88',
 };
-const recorded = {
-  type: 'PremiumCollectionAttemptFailed',
-  data: command,
+const debitReturn = { type: 'DirectDebitReturn', data: payload, tags: [sourceTag('DDR-88')] };
+const unknownReturn = { type: 'DirectDebitReturn', data: unknown, tags: [sourceTag('DDR-89')] };
+const observed = {
+  type: 'CollectionReturnObserved',
+  data: mapped,
   tags: ['collection:collection-P1-2026-11', sourceTag('DDR-88')],
 };
+const recorded = {
+  type: 'PremiumCollectionAttemptFailed',
+  data: mapped,
+  tags: ['collection:collection-P1-2026-11', sourceTag('DDR-88')],
+};
+const rejected = (rejectionReason) => ({
+  type: 'CollectionReturnRejected',
+  data: { ...mapped, rejectionReason },
+  tags: ['collection:collection-P1-2026-11', sourceTag('DDR-88')],
+});
 
 const PremiumCollectionRequested = (collectionId) => ({
   type: 'PremiumCollectionRequested',
@@ -51,35 +70,83 @@ const PremiumCollected = (collectionId) => ({
   tags: [`collection:${collectionId}`],
 });
 
-test('The payload maps to a command, unknown codes are ignored', () => {
-  assert.deepEqual(translate(payload), command);
+test('A debit return is stored as DirectDebitReturn', async () => {
+  const event = await ingest(store, payload);
+  assert.deepEqual({ type: event.type, data: event.data, tags: event.tags }, debitReturn);
+  assert.equal(await ingest(store, payload), null);
+});
+
+test('The payload maps to a collection return, unknown codes are ignored', () => {
+  assert.deepEqual(translate(payload), mapped);
   assert.equal(translate(unknown), null);
 });
 
-test('Given a collection in flight, when a mapped debit return arrives, then PremiumCollectionAttemptFailed', async () => {
-  await given(PremiumCollectionRequested('collection-P1-2026-11'));
-  await when(payload);
-  await thenEvents('collection:collection-P1-2026-11', [recorded]);
+test('Given a DirectDebitReturn, when TranslateDirectDebitReturn, then CollectionReturnObserved', async () => {
+  await given(debitReturn);
+  await project();
+  await processTranslations({ pool, store });
+  await thenEvents(['CollectionReturnObserved'], 'collection:collection-P1-2026-11', [observed]);
 });
 
-test('The same payload delivered twice is recorded once', async () => {
-  await given(PremiumCollectionRequested('collection-P1-2026-11'));
-  await when(payload);
-  assert.equal(await when(payload), null);
-  await thenEvents('collection:collection-P1-2026-11', [recorded]);
+test('The same DirectDebitReturn translated twice is recorded once', async () => {
+  await given(debitReturn);
+  await project();
+  await processTranslations({ pool, store });
+  const second = await processTranslations({ pool, store });
+  assert.equal(second[0].event, null);
+  await thenEvents(['CollectionReturnObserved'], 'collection:collection-P1-2026-11', [observed]);
 });
 
-test('An unknown code is ignored and records nothing', async () => {
-  await given(PremiumCollectionRequested('collection-P1-2026-11'));
-  assert.equal(await when(unknown), null);
-  await thenEvents('collection:collection-P1-2026-11', []);
+test('An unknown code is skipped and records no internal event', async () => {
+  await given(unknownReturn);
+  await project();
+  assert.equal((await processTranslations({ pool, store }))[0].event, null);
+  await thenEvents(['CollectionReturnObserved'], 'collection:collection-P1-2026-11', []);
 });
 
-test('Given no matching record, the command is rejected', async () => {
-  await assert.rejects(when(payload), { message: 'CollectionNotFound' });
+test('The translation todo list is never closed', async () => {
+  await given(debitReturn);
+  await project();
+  await processTranslations({ pool, store });
+  await project();
+  assert.deepEqual(await listToTranslate(pool), [payload]);
 });
 
-test('Given a closed record, the command is rejected', async () => {
-  await given(PremiumCollectionRequested('collection-P1-2026-11'), PremiumCollected('collection-P1-2026-11'));
-  await assert.rejects(when(payload), { message: 'AttemptNotInFlight' });
+test('Given a collection in flight, when RecordCollectionAttemptFailed, then PremiumCollectionAttemptFailed and the worker todo closes', async () => {
+  await given(PremiumCollectionRequested('collection-P1-2026-11'), observed);
+  await project();
+  assert.equal((await listToApply(pool)).length, 1);
+  await processWork({ pool, store });
+  await thenEvents(['PremiumCollectionAttemptFailed'], 'collection:collection-P1-2026-11', [recorded]);
+  await project();
+  assert.deepEqual((await pool.query('SELECT * FROM collection_returns_to_record')).rows, []);
+});
+
+test('Given no matching collection, RecordCollectionAttemptFailed records CollectionReturnRejected and the worker todo closes', async () => {
+  await given(observed);
+  await project();
+  await processWork({ pool, store });
+  await thenEvents(['CollectionReturnRejected'], 'collection:collection-P1-2026-11', [rejected('CollectionNotFound')]);
+  await project();
+  assert.deepEqual((await pool.query('SELECT * FROM collection_returns_to_record')).rows, []);
+});
+
+test('Given a closed collection, RecordCollectionAttemptFailed records CollectionReturnRejected and the worker todo closes', async () => {
+  await given(PremiumCollectionRequested('collection-P1-2026-11'), PremiumCollected('collection-P1-2026-11'), observed);
+  await project();
+  await processWork({ pool, store });
+  await thenEvents(['CollectionReturnRejected'], 'collection:collection-P1-2026-11', [rejected('AttemptNotInFlight')]);
+  await project();
+  assert.deepEqual((await pool.query('SELECT * FROM collection_returns_to_record')).rows, []);
+});
+
+test('Given a return whose collection attempt is not in flight, then CollectionReturnRejected carries returnReason and rejectionReason AttemptNotInFlight', async () => {
+  await given(PremiumCollectionRequested('collection-P1-2026-11'), PremiumCollected('collection-P1-2026-11'), observed);
+  await project();
+  await processWork({ pool, store });
+  await thenEvents(['CollectionReturnRejected'], 'collection:collection-P1-2026-11', [{
+    type: 'CollectionReturnRejected',
+    data: { ...mapped, rejectionReason: 'AttemptNotInFlight' },
+    tags: ['collection:collection-P1-2026-11', sourceTag('DDR-88')],
+  }]);
 });

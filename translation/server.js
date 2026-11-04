@@ -1,13 +1,31 @@
 import http from 'node:http';
-import { store } from './store.js';
-import { ingest as ingestLabResult } from './LabResult/LabResult.js';
-import { ingest as ingestDirectDebitReturn } from './DirectDebitReturn/DirectDebitReturn.js';
-import { ingest as ingestDeathNotice } from './DeathRegistryNotice/DeathRegistryNotice.js';
+import { ProjectionManager } from 'es-dcb-library/projections';
+import { store, pool } from './store.js';
+import { startProcessor } from './processor.js';
+import * as lab from './LabResult/LabResult.js';
+import * as debit from './DirectDebitReturn/DirectDebitReturn.js';
+import * as death from './DeathRegistryNotice/DeathRegistryNotice.js';
+
+const projections = [
+  lab.translationProjection, lab.workerProjection,
+  debit.translationProjection, debit.workerProjection,
+  death.translationProjection, death.workerProjection,
+];
+const manager = new ProjectionManager({ pool, store, projections });
+await manager.initialize();
+manager.start();
+
+startProcessor(() => lab.processTranslations({ pool, store }));
+startProcessor(() => lab.processWork({ pool, store }));
+startProcessor(() => debit.processTranslations({ pool, store }));
+startProcessor(() => debit.processWork({ pool, store }));
+startProcessor(() => death.processTranslations({ pool, store }));
+startProcessor(() => death.processWork({ pool, store }));
 
 const feeds = {
-  '/feeds/lab-results': ingestLabResult,
-  '/feeds/direct-debit-returns': ingestDirectDebitReturn,
-  '/feeds/death-notices': ingestDeathNotice,
+  '/feeds/lab-results': lab.ingest,
+  '/feeds/direct-debit-returns': debit.ingest,
+  '/feeds/death-notices': death.ingest,
 };
 
 http.createServer(async (req, res) => {
