@@ -1,16 +1,23 @@
 import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { queryItem } from 'es-dcb-library';
-import { store, pool } from '../store.js';
-import { external, translate, ingest, sourceTag } from './LabResult.js';
+import { store, pool, given, runProjections, reset } from '../testkit.js';
+import {
+  external, translate, ingest, sourceTag,
+  translationProjection, workerProjection,
+  listToTranslate, listToApply,
+  processTranslations, processWork,
+} from './LabResult.js';
 
-beforeEach(() => pool.query('TRUNCATE events'));
+const project = () => runProjections(translationProjection, workerProjection);
+beforeEach(() => reset(
+  [translationProjection, workerProjection],
+  ['lab_results_to_translate', 'underwriting_evidence_to_record'],
+));
 after(() => pool.end());
 
-const given = (...events) => store.append(events);
-const when = (payload) => ingest(store, payload);
-async function thenEvents(tag, expected) {
-  const { events } = await store.load(queryItem({ types: ['UnderwritingEvidenceRecorded'], tags: [tag] }));
+async function thenEvents(types, tag, expected) {
+  const { events } = await store.load(queryItem({ types, tags: [tag] }));
   assert.deepEqual(events.map(({ type, data, tags }) => ({ type, data, tags })), expected);
 }
 
@@ -30,7 +37,7 @@ const unknown = external({
   clientOrderId: 'A1',
   collectedAt: '2026-11-02T09:00:00Z',
 });
-const command = {
+const mapped = {
   applicationId: 'A1',
   marker: 'fasting_glucose',
   value: 5.55,
@@ -38,11 +45,23 @@ const command = {
   observedAt: '2026-11-02T09:00:00Z',
   sourceEventId: 'LR-1001',
 };
-const recorded = {
-  type: 'UnderwritingEvidenceRecorded',
-  data: command,
+const labResult = { type: 'LabResult', data: payload, tags: [sourceTag('LR-1001')] };
+const unknownLabResult = { type: 'LabResult', data: unknown, tags: [sourceTag('LR-1002')] };
+const observed = {
+  type: 'UnderwritingEvidenceObserved',
+  data: mapped,
   tags: ['application:A1', sourceTag('LR-1001')],
 };
+const recorded = {
+  type: 'UnderwritingEvidenceRecorded',
+  data: mapped,
+  tags: ['application:A1', sourceTag('LR-1001')],
+};
+const rejected = (reason) => ({
+  type: 'UnderwritingEvidenceRejected',
+  data: { ...mapped, reason },
+  tags: ['application:A1', sourceTag('LR-1001')],
+});
 
 const ApplicationReceived = (applicationId) => ({
   type: 'ApplicationReceived',
@@ -55,35 +74,72 @@ const PolicyIssued = (applicationId) => ({
   tags: [`application:${applicationId}`, 'policy:P1'],
 });
 
-test('The payload maps to a command, unknown codes are ignored', () => {
-  assert.deepEqual(translate(payload), command);
+test('A lab result is stored as LabResult', async () => {
+  const event = await ingest(store, payload);
+  assert.deepEqual({ type: event.type, data: event.data, tags: event.tags }, labResult);
+  assert.equal(await ingest(store, payload), null);
+});
+
+test('The payload maps to underwriting evidence, unknown codes are ignored', () => {
+  assert.deepEqual(translate(payload), mapped);
   assert.equal(translate(unknown), null);
 });
 
-test('Given an application in underwriting, when a mapped lab result arrives, then UnderwritingEvidenceRecorded', async () => {
-  await given(ApplicationReceived('A1'));
-  await when(payload);
-  await thenEvents('application:A1', [recorded]);
+test('Given a LabResult, when TranslateLabResult, then UnderwritingEvidenceObserved', async () => {
+  await given(labResult);
+  await project();
+  await processTranslations({ pool, store });
+  await thenEvents(['UnderwritingEvidenceObserved'], 'application:A1', [observed]);
 });
 
-test('The same payload delivered twice is recorded once', async () => {
-  await given(ApplicationReceived('A1'));
-  await when(payload);
-  assert.equal(await when(payload), null);
-  await thenEvents('application:A1', [recorded]);
+test('The same LabResult translated twice is recorded once', async () => {
+  await given(labResult);
+  await project();
+  await processTranslations({ pool, store });
+  const second = await processTranslations({ pool, store });
+  assert.equal(second[0].event, null);
+  await thenEvents(['UnderwritingEvidenceObserved'], 'application:A1', [observed]);
 });
 
-test('An unknown code is ignored and records nothing', async () => {
-  await given(ApplicationReceived('A1'));
-  assert.equal(await when(unknown), null);
-  await thenEvents('application:A1', []);
+test('An unknown code is skipped and records no internal event', async () => {
+  await given(unknownLabResult);
+  await project();
+  assert.equal((await processTranslations({ pool, store }))[0].event, null);
+  await thenEvents(['UnderwritingEvidenceObserved'], 'application:A1', []);
 });
 
-test('Given no matching record, the command is rejected', async () => {
-  await assert.rejects(when(payload), { message: 'ApplicationNotFound' });
+test('The translation todo list is never closed', async () => {
+  await given(labResult);
+  await project();
+  await processTranslations({ pool, store });
+  await project();
+  assert.deepEqual(await listToTranslate(pool), [payload]);
 });
 
-test('Given a closed record, the command is rejected', async () => {
-  await given(ApplicationReceived('A1'), PolicyIssued('A1'));
-  await assert.rejects(when(payload), { message: 'ApplicationNotInUnderwriting' });
+test('Given an application in underwriting, when RecordUnderwritingEvidence, then UnderwritingEvidenceRecorded and the worker todo closes', async () => {
+  await given(ApplicationReceived('A1'), observed);
+  await project();
+  assert.equal((await listToApply(pool)).length, 1);
+  await processWork({ pool, store });
+  await thenEvents(['UnderwritingEvidenceRecorded'], 'application:A1', [recorded]);
+  await project();
+  assert.deepEqual(await listToApply(pool), []);
+});
+
+test('Given no matching application, RecordUnderwritingEvidence records UnderwritingEvidenceRejected and the worker todo closes', async () => {
+  await given(observed);
+  await project();
+  await processWork({ pool, store });
+  await thenEvents(['UnderwritingEvidenceRejected'], 'application:A1', [rejected('ApplicationNotFound')]);
+  await project();
+  assert.deepEqual(await listToApply(pool), []);
+});
+
+test('Given a closed application, RecordUnderwritingEvidence records UnderwritingEvidenceRejected and the worker todo closes', async () => {
+  await given(ApplicationReceived('A1'), PolicyIssued('A1'), observed);
+  await project();
+  await processWork({ pool, store });
+  await thenEvents(['UnderwritingEvidenceRejected'], 'application:A1', [rejected('ApplicationNotInUnderwriting')]);
+  await project();
+  assert.deepEqual(await listToApply(pool), []);
 });
