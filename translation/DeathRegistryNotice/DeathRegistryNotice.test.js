@@ -54,9 +54,9 @@ const recorded = {
   data: { policyId: 'P1', ...mapped },
   tags: ['policy:P1', 'person:N-1001', sourceTag('DR-2026-441')],
 };
-const rejected = (reason, policyId) => ({
+const rejected = (rejectionReason, policyId) => ({
   type: 'DeathClaimRejected',
-  data: { ...mapped, reason },
+  data: { ...mapped, rejectionReason },
   tags: policyId
     ? ['policy:P1', 'person:N-1001', sourceTag('DR-2026-441')]
     : ['person:N-1001', sourceTag('DR-2026-441')],

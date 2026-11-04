@@ -181,9 +181,9 @@ export async function issue(store, command) {
   const tags = [`application:${command.applicationId}`, seenTag];
   let record;
   if (!state.exists) {
-    record = { type: 'UnderwritingEvidenceRejected', data: { ...command, reason: 'ApplicationNotFound' }, tags };
+    record = { type: 'UnderwritingEvidenceRejected', data: { ...command, rejectionReason: 'ApplicationNotFound' }, tags };
   } else if (!state.open) {
-    record = { type: 'UnderwritingEvidenceRejected', data: { ...command, reason: 'ApplicationNotInUnderwriting' }, tags };
+    record = { type: 'UnderwritingEvidenceRejected', data: { ...command, rejectionReason: 'ApplicationNotInUnderwriting' }, tags };
   } else {
     record = { type: 'UnderwritingEvidenceRecorded', data: command, tags };
   }

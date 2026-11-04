@@ -176,9 +176,9 @@ export async function issue(store, command) {
   if (state.policyId) tags.unshift(`policy:${state.policyId}`);
   let record;
   if (!state.exists) {
-    record = { type: 'DeathClaimRejected', data: { ...command, reason: 'PolicyNotFound' }, tags };
+    record = { type: 'DeathClaimRejected', data: { ...command, rejectionReason: 'PolicyNotFound' }, tags };
   } else if (!state.open) {
-    record = { type: 'DeathClaimRejected', data: { ...command, reason: 'PolicyNotInForce' }, tags };
+    record = { type: 'DeathClaimRejected', data: { ...command, rejectionReason: 'PolicyNotInForce' }, tags };
   } else {
     record = { type: 'DeathClaimOpened', data: { policyId: state.policyId, ...command }, tags };
   }

@@ -57,9 +57,9 @@ const recorded = {
   data: mapped,
   tags: ['application:A1', sourceTag('LR-1001')],
 };
-const rejected = (reason) => ({
+const rejected = (rejectionReason) => ({
   type: 'UnderwritingEvidenceRejected',
-  data: { ...mapped, reason },
+  data: { ...mapped, rejectionReason },
   tags: ['application:A1', sourceTag('LR-1001')],
 });
 

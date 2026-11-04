@@ -25,9 +25,9 @@ export async function ingest(store, payload) {
 }
 
 const MAP = {
-  'direct_debit.returned:AM04': { reason: 'insufficient_funds' },
-  'direct_debit.returned:AC04': { reason: 'account_closed' },
-  'direct_debit.returned:MD07': { reason: 'payer_deceased' },
+  'direct_debit.returned:AM04': { returnReason: 'insufficient_funds' },
+  'direct_debit.returned:AC04': { returnReason: 'account_closed' },
+  'direct_debit.returned:MD07': { returnReason: 'payer_deceased' },
 };
 
 // Pure mapping. Return codes only. No business rules.
@@ -37,7 +37,7 @@ export function translate(payload) {
   if (!mapped) return null;
   return {
     collectionId: payload.collectionRef,
-    reason: mapped.reason,
+    returnReason: mapped.returnReason,
     returnedAt: payload.returnedAt,
     sourceEventId: payload.id,
   };
@@ -111,7 +111,7 @@ export const workerProjection = defineProjection({
       CREATE TABLE IF NOT EXISTS collection_returns_to_record (
         source_event_id TEXT PRIMARY KEY,
         collection_id   TEXT NOT NULL,
-        reason          TEXT NOT NULL,
+        return_reason   TEXT NOT NULL,
         returned_at     TEXT NOT NULL
       )`);
   },
@@ -119,9 +119,9 @@ export const workerProjection = defineProjection({
     CollectionReturnObserved: (d, _e, c) =>
       c.query(
         `INSERT INTO collection_returns_to_record
-         (source_event_id, collection_id, reason, returned_at)
+         (source_event_id, collection_id, return_reason, returned_at)
          VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
-        [d.sourceEventId, d.collectionId, d.reason, d.returnedAt]),
+        [d.sourceEventId, d.collectionId, d.returnReason, d.returnedAt]),
     PremiumCollectionAttemptFailed: (d, _e, c) => close(c, d.sourceEventId),
     CollectionReturnRejected: (d, _e, c) => close(c, d.sourceEventId),
   }),
@@ -134,7 +134,7 @@ export async function listToApply(pool) {
     'SELECT * FROM collection_returns_to_record ORDER BY source_event_id');
   return rows.map((r) => ({
     collectionId: r.collection_id,
-    reason: r.reason,
+    returnReason: r.return_reason,
     returnedAt: r.returned_at,
     sourceEventId: r.source_event_id,
   }));
@@ -171,9 +171,9 @@ export async function issue(store, command) {
   const tags = [`collection:${command.collectionId}`, seenTag];
   let record;
   if (!state.exists) {
-    record = { type: 'CollectionReturnRejected', data: { ...command, reason: 'CollectionNotFound' }, tags };
+    record = { type: 'CollectionReturnRejected', data: { ...command, rejectionReason: 'CollectionNotFound' }, tags };
   } else if (!state.open) {
-    record = { type: 'CollectionReturnRejected', data: { ...command, reason: 'AttemptNotInFlight' }, tags };
+    record = { type: 'CollectionReturnRejected', data: { ...command, rejectionReason: 'AttemptNotInFlight' }, tags };
   } else {
     record = { type: 'PremiumCollectionAttemptFailed', data: command, tags };
   }

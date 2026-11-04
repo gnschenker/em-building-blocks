@@ -37,7 +37,7 @@ const unknown = external({
 });
 const mapped = {
   collectionId: 'collection-P1-2026-11',
-  reason: 'insufficient_funds',
+  returnReason: 'insufficient_funds',
   returnedAt: '2026-11-01T08:12:00Z',
   sourceEventId: 'DDR-88',
 };
@@ -53,9 +53,9 @@ const recorded = {
   data: mapped,
   tags: ['collection:collection-P1-2026-11', sourceTag('DDR-88')],
 };
-const rejected = (reason) => ({
+const rejected = (rejectionReason) => ({
   type: 'CollectionReturnRejected',
-  data: { ...mapped, reason },
+  data: { ...mapped, rejectionReason },
   tags: ['collection:collection-P1-2026-11', sourceTag('DDR-88')],
 });
 
@@ -138,4 +138,15 @@ test('Given a closed collection, RecordCollectionAttemptFailed records Collectio
   await thenEvents(['CollectionReturnRejected'], 'collection:collection-P1-2026-11', [rejected('AttemptNotInFlight')]);
   await project();
   assert.deepEqual((await pool.query('SELECT * FROM collection_returns_to_record')).rows, []);
+});
+
+test('Given a return whose collection attempt is not in flight, then CollectionReturnRejected carries returnReason and rejectionReason AttemptNotInFlight', async () => {
+  await given(PremiumCollectionRequested('collection-P1-2026-11'), PremiumCollected('collection-P1-2026-11'), observed);
+  await project();
+  await processWork({ pool, store });
+  await thenEvents(['CollectionReturnRejected'], 'collection:collection-P1-2026-11', [{
+    type: 'CollectionReturnRejected',
+    data: { ...mapped, rejectionReason: 'AttemptNotInFlight' },
+    tags: ['collection:collection-P1-2026-11', sourceTag('DDR-88')],
+  }]);
 });
