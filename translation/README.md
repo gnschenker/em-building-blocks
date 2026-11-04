@@ -57,4 +57,6 @@ npm test
 npm start    # POST http://localhost:3000/feeds/lab-results
 ```
 
+After pulling schema changes, drop and recreate the database: tables are created with `CREATE TABLE IF NOT EXISTS`, so old tables keep the earlier columns (e.g. `reason`).
+
 `npm test` passes `--test-concurrency=1` (all files share one database) and `--test-force-exit`: es-dcb-library 1.0.1 leaves a 30-second setup-timeout timer running after `ProjectionManager.initialize()`, so without the flag each test file waits about 30 s before it exits.
