@@ -13,6 +13,7 @@ Each slice type lives in its own feature branch and is merged into `main` as a s
 | State Change | `state-change` | [One slice, end to end](https://www.linkedin.com/pulse/one-slice-end-gabriel-n-schenker-gomle/) |
 | State View | `state-view` | [Read models are cheap. Coupling isn't.](https://www.linkedin.com/pulse/read-models-cheap-coupling-isnt-gabriel-n-schenker-7geqe/) |
 | Automation | `automation` | [The work nobody clicks](https://www.linkedin.com/pulse/work-nobody-clicks-gabriel-n-schenker-yhzge/) (concept) + _Code article coming soon_ |
+| Translation | `translation` | _Code article coming soon_ |
 
 ## License
 
