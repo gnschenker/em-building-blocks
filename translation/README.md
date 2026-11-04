@@ -4,9 +4,9 @@ Same style as ["One slice, end to end"](https://www.linkedin.com/pulse/one-slice
 
 Translation is inbound only. An external system's event is converted into the language of this system, and that then leads to a command, which records an event. Your command is where business rules apply. Translation itself holds none.
 
-This is not an anti-corruption layer. An ACL is a bidirectional, synchronous facade that wraps a foreign model's API for outbound calls. Translation is one-way and inbound: it reacts to facts that already happened elsewhere and turns them into facts in this system.
+Translation is related to an anti-corruption layer but narrower: one small, inbound-only slice with the same shape every time.
 
-Every translator here has the same shape. Diff any two folders and the only changes are the domain mapping.
+Every translator here has the same shape. Diff any two folders and only the domain mapping and its decision model change.
 
 | Step | Function | Role |
 |---|---|---|
