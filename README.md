@@ -4,7 +4,7 @@ This repository contains full runnable code examples for Event Modeling slice ty
 
 ## Structure
 
-Each slice type lives in its own feature branch and is merged into `main` as a separate, self-contained implementation. Each merge will be tagged for easy reference (tags created at merge time).
+Each slice type is a self-contained implementation on `main`, merged from its feature branch and tagged for easy reference.
 
 ## Available Slice Types
 
@@ -12,8 +12,10 @@ Each slice type lives in its own feature branch and is merged into `main` as a s
 |------------|------------|---------|
 | State Change | `state-change` | [One slice, end to end](https://www.linkedin.com/pulse/one-slice-end-gabriel-n-schenker-gomle/) |
 | State View | `state-view` | [Read models are cheap. Coupling isn't.](https://www.linkedin.com/pulse/read-models-cheap-coupling-isnt-gabriel-n-schenker-7geqe/) |
-| Automation | `automation` | [The work nobody clicks](https://www.linkedin.com/pulse/work-nobody-clicks-gabriel-n-schenker-yhzge/) (concept) + _Code article coming soon_ |
-| Translation | `translation` | _Code article coming soon_ |
+| Automation | `automation` | [The work nobody clicks](https://www.linkedin.com/pulse/work-nobody-clicks-gabriel-n-schenker-yhzge/) (concept) + [The work nobody sees: automation slices in code](https://www.linkedin.com/pulse/work-nobody-sees-automation-slices-code-gabriel-n-schenker-nk4ve/) |
+| Translation | `translation-v2` | [Their words, our facts: translation slices in code](https://www.linkedin.com/pulse/words-our-facts-translation-slices-code-gabriel-n-schenker-8ga0e/) |
+
+Translation's latest code is tagged `translation-v2`: never-closing translation todo list → pure-mapping Translate* → …Observed → worker todo list → worker command with rules → Recorded/Rejected.
 
 ## License
 
